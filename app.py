@@ -38,16 +38,16 @@ from counterfactual_utils import (
 # ============================================================
 
 st.set_page_config(
-    page_title="肠道准备风险预测工具",
+    page_title="肠道准备不充分风险预测工具",
     page_icon="🩺",
     layout="wide"
 )
 
 setup_chinese_font()
 
-st.title("🩺 肠道准备风险预测工具")
+st.title("🩺 肠道准备不充分风险预测工具")
 st.caption(
-    "最终模型：Stacking Classifier。"
+    "最终模型：Raw Stacking Classifier。"
     "本工具用于预测患者肠道准备不充分风险，并提供模型解释与风险下降干预建议。"
 )
 
@@ -57,56 +57,24 @@ st.warning(
 
 
 # ============================================================
-# 侧边栏设置
+# 页面固定参数
 # ============================================================
 
-st.sidebar.header("模型设置")
+DEPLOY_DIR = "Final_Deploy_Stacking_V2"
+INTERVENTION_THRESHOLD = 0.135
 
-DEPLOY_DIR = st.sidebar.text_input(
-    "部署文件夹",
-    value="Final_Deploy_Stacking_V2"
-)
+# 默认显示 SHAP 蜂巢图，抽样样本量固定为 100
+RUN_GLOBAL_SHAP = True
+GLOBAL_SHAP_N = 100
 
-INTERVENTION_THRESHOLD = st.sidebar.number_input(
-    "高风险判定阈值",
-    min_value=0.000,
-    max_value=1.000,
-    value=0.135,
-    step=0.001,
-    format="%.3f"
-)
+# 默认进行两两组合干预扫描
+RUN_PAIRWISE_CF = True
 
-RUN_GLOBAL_SHAP = st.sidebar.checkbox(
-    "显示 SHAP 蜂巢图",
-    value=True
-)
+# 默认排除“禁食 1 天及以上”作为反事实建议目标
+EXCLUDE_FASTING_OVER_1_DAY = True
 
-GLOBAL_SHAP_N = st.sidebar.slider(
-    "SHAP 蜂巢图抽样样本量",
-    min_value=20,
-    max_value=200,
-    value=60,
-    step=10
-)
-
-RUN_PAIRWISE_CF = st.sidebar.checkbox(
-    "评估两两组合干预建议",
-    value=True
-)
-
-EXCLUDE_FASTING = st.sidebar.checkbox(
-    "反事实建议中排除“禁食”策略",
-    value=False
-)
-
-MIN_ABSOLUTE_REDUCTION = st.sidebar.number_input(
-    "建议保留的最小绝对风险下降值",
-    min_value=0.000,
-    max_value=0.200,
-    value=0.000,
-    step=0.001,
-    format="%.3f"
-)
+# 只要预测风险下降即保留
+MIN_ABSOLUTE_REDUCTION = 0.000
 
 
 # ============================================================
@@ -137,8 +105,6 @@ X_val_final = datasets["X_val_final"][feature_order]
 
 feature_name_map = get_feature_display_map()
 
-st.sidebar.success("模型部署包读取成功")
-
 
 # ============================================================
 # 患者变量输入
@@ -152,11 +118,6 @@ patient_raw_df, patient_model_df, input_summary_df = build_patient_input_form(
     feature_name_map=feature_name_map,
 )
 
-with st.expander("查看模型编码后的输入变量", expanded=False):
-    st.dataframe(patient_model_df.T.rename(columns={0: "取值"}), use_container_width=True)
-
-with st.expander("查看临床输入信息汇总", expanded=False):
-    st.dataframe(input_summary_df, use_container_width=True)
 
 
 # ============================================================
@@ -306,7 +267,7 @@ if "predicted_prob" in st.session_state:
             intervention_threshold=INTERVENTION_THRESHOLD,
             min_absolute_reduction=MIN_ABSOLUTE_REDUCTION,
             evaluate_pairwise=RUN_PAIRWISE_CF,
-            exclude_fasting=EXCLUDE_FASTING
+            exclude_fasting_over_1_day=EXCLUDE_FASTING_OVER_1_DAY
         )
 
     if cf_all_df.empty:
@@ -318,46 +279,42 @@ if "predicted_prob" in st.session_state:
 
         st.subheader("风险下降建议 Top 20")
 
-        display_cols = [
+        top_display_cols = [
             "干预类型",
             "干预措施",
             "原始风险",
-            "干预后风险",
-            "绝对风险下降百分点",
-            "相对风险下降百分比",
-            "是否低于干预阈值",
-            "解释"
+            "干预后风险"
         ]
 
         st.dataframe(
-            cf_all_display[display_cols].head(20),
+            cf_all_display[top_display_cols].head(20),
             use_container_width=True
         )
 
-        csv_bytes = cf_all_display.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
+        detail_display_cols = [
+            "干预类型",
+            "干预措施",
+            "原始取值",
+            "干预后取值",
+            "原始风险",
+            "干预后风险"
+        ]
 
-        st.download_button(
-            label="下载反事实建议 CSV",
-            data=csv_bytes,
-            file_name="反事实干预建议.csv",
-            mime="text/csv"
-        )
-
-        with st.expander("单项干预建议", expanded=False):
+        with st.expander("单项干预建议", expanded=True):
             if cf_single_df.empty:
                 st.info("未发现可降低预测风险的单项干预。")
             else:
                 st.dataframe(
-                    add_display_columns(cf_single_df),
+                    add_display_columns(cf_single_df)[detail_display_cols],
                     use_container_width=True
                 )
 
-        with st.expander("两两组合干预建议", expanded=False):
+        with st.expander("两两组合干预建议", expanded=True):
             if cf_pairwise_df.empty:
                 st.info("未发现可降低预测风险的两两组合干预，或未启用组合干预扫描。")
             else:
                 st.dataframe(
-                    add_display_columns(cf_pairwise_df).head(50),
+                    add_display_columns(cf_pairwise_df)[detail_display_cols].head(50),
                     use_container_width=True
                 )
 

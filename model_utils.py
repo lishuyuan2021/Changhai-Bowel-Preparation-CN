@@ -106,25 +106,25 @@ def get_feature_display_map():
 
         "HospitalGrade": "医院等级",
         "Sex": "性别",
-        "InpatientStatus": "住院状态",
+        "InpatientStatus": "患者状态",
         "PreviousColonoscopy": "既往肠镜检查史",
         "ChronicConstipation": "慢性便秘",
         "ChronicDiarrhea": "慢性腹泻",
         "DiabetesMellitus": "糖尿病",
-        "StoolForm": "平素大便性状",
+        "StoolForm": "平时大便性状",
         "BPEducationModality": "肠道准备宣教方式",
-        "SplitDose_BP": "分次服用肠道准备药物",
-        "PreColonoscopyPhysicalActivity": "肠镜前体力活动",
+        "SplitDose_BP": "泻药是否分次服用",
+        "PreColonoscopyPhysicalActivity": "服用泻药后是否加强活动",
 
         "BPtoColonoscopyinterval_1": "肠道准备至肠镜间隔：<120 min",
         "BPtoColonoscopyinterval_2": "肠道准备至肠镜间隔：120–240 min",
         "BPtoColonoscopyinterval_3": "肠道准备至肠镜间隔：240–360 min",
         "BPtoColonoscopyinterval_4": "肠道准备至肠镜间隔：≥360 min",
 
-        "DietaryRestriction_1": "饮食限制策略：禁食",
-        "DietaryRestriction_2": "饮食限制策略：低渣饮食",
-        "DietaryRestriction_3": "饮食限制策略：流质饮食",
-        "DietaryRestriction_4": "饮食限制策略：普通饮食",
+        "DietaryRestriction_1": "饮食限制方式：禁食",
+        "DietaryRestriction_2": "饮食限制方式：低渣饮食",
+        "DietaryRestriction_3": "饮食限制方式：流质饮食",
+        "DietaryRestriction_4": "饮食限制方式：普通饮食",
 
         "LaxativeRegimen_1": "泻药方案：PEG 2L",
         "LaxativeRegimen_2": "泻药方案：PEG 3L",
@@ -133,8 +133,8 @@ def get_feature_display_map():
         "LaxativeRegimen_5": "泻药方案：甘露醇",
         "LaxativeRegimen_6": "泻药方案：硫酸镁",
 
-        #"PsychotropicMedication_2": "精神类药物：三环类抗抑郁药",
-        "PreviousAbdominopelvicSurgery_1": "既往腹盆腔手术史"
+        "PsychotropicMedication_2": "精神类药物：三环类抗抑郁药",
+        "PreviousAbdominopelvicSurgery_1": "既往盆腔手术史"
     }
 
 
@@ -202,143 +202,88 @@ def predict_patient(model, patient_model_df, feature_order):
 # Streamlit 输入表单
 # ============================================================
 
+
 def build_patient_input_form(feature_order, scaler, feature_name_map):
     """
     构建患者变量输入表单。
-    返回：
-    1. patient_raw_df：原始临床输入
-    2. patient_model_df：模型编码 / 标准化后的输入
-    3. input_summary_df：临床可读输入汇总
+    仅显示用户指定的变量；未展示但模型需要的变量默认设为 0。
     """
 
     row = {col: 0 for col in feature_order}
     raw_values = {}
     summary_rows = []
+    used_features = set()
 
     dietary_group = [c for c in [
-        "DietaryRestriction_1",
-        "DietaryRestriction_2",
-        "DietaryRestriction_3",
-        "DietaryRestriction_4"
+        "DietaryRestriction_1", "DietaryRestriction_2",
+        "DietaryRestriction_3", "DietaryRestriction_4"
     ] if c in feature_order]
 
     laxative_group = [c for c in [
-        "LaxativeRegimen_1",
-        "LaxativeRegimen_2",
-        "LaxativeRegimen_3",
-        "LaxativeRegimen_4",
-        "LaxativeRegimen_5",
-        "LaxativeRegimen_6"
+        "LaxativeRegimen_1", "LaxativeRegimen_2", "LaxativeRegimen_3",
+        "LaxativeRegimen_4", "LaxativeRegimen_5", "LaxativeRegimen_6"
     ] if c in feature_order]
 
     interval_group = [c for c in [
-        "BPtoColonoscopyinterval_1",
-        "BPtoColonoscopyinterval_2",
-        "BPtoColonoscopyinterval_3",
-        "BPtoColonoscopyinterval_4"
+        "BPtoColonoscopyinterval_1", "BPtoColonoscopyinterval_2",
+        "BPtoColonoscopyinterval_3", "BPtoColonoscopyinterval_4"
     ] if c in feature_order]
 
+    # ------------------------------------------------------------
+    # 1. 基本信息：年龄、性别、BMI
+    # ------------------------------------------------------------
     st.subheader("基本信息")
-
     c1, c2, c3 = st.columns(3)
 
     with c1:
         age = st.number_input("年龄（岁）", min_value=18.0, max_value=100.0, value=60.0, step=1.0)
 
     with c2:
-        bmi = st.number_input("BMI（kg/m²）", min_value=10.0, max_value=50.0, value=23.0, step=0.1)
+        sex_options = {"男": 1, "女": 0}
+        selected_sex = st.selectbox("性别", list(sex_options.keys()))
 
     with c3:
-        diet_days = st.number_input("饮食限制时间（天）", min_value=0.0, max_value=7.0, value=1.0, step=1.0)
+        bmi = st.number_input("BMI（kg/m²）", min_value=10.0, max_value=50.0, value=23.0, step=0.1)
 
     if "Age" in row:
         row["Age"] = standardize_value(scaler, "Age", age)
+        used_features.add("Age")
+    if "Sex" in row:
+        row["Sex"] = sex_options[selected_sex]
+        used_features.add("Sex")
     if "BMI" in row:
         row["BMI"] = standardize_value(scaler, "BMI", bmi)
-    if "DietaryRestrictionDays" in row:
-        row["DietaryRestrictionDays"] = standardize_value(scaler, "DietaryRestrictionDays", diet_days)
+        used_features.add("BMI")
 
-    raw_values.update({
-        "Age": age,
-        "BMI": bmi,
-        "DietaryRestrictionDays": diet_days
-    })
-
+    raw_values.update({"Age": age, "Sex": sex_options[selected_sex], "BMI": bmi})
     summary_rows.extend([
         {"变量": "年龄", "取值": age},
+        {"变量": "性别", "取值": selected_sex},
         {"变量": "BMI", "取值": bmi},
-        {"变量": "饮食限制时间", "取值": f"{diet_days} 天"},
     ])
 
+    # ------------------------------------------------------------
+    # 2. 临床相关因素
+    # ------------------------------------------------------------
     st.subheader("临床相关因素")
 
-    col1, col2, col3 = st.columns(3)
-
-    binary_configs = {
-        "HospitalGrade": {
-            "label": "医院等级",
-            "options": {"非三级医院 / 低级别医院": 0, "三级医院": 1}
-        },
-        "Sex": {
-            "label": "性别编码",
-            "options": {"女性": 0, "男性": 1}
-        },
-        "InpatientStatus": {
-            "label": "患者状态",
-            "options": {"门诊": 0, "住院": 1}
-        },
-        "PreviousColonoscopy": {
-            "label": "既往肠镜检查史",
-            "options": {"无": 0, "有": 1}
-        },
-        "ChronicConstipation": {
-            "label": "慢性便秘",
-            "options": {"否": 0, "是": 1}
-        },
-        "ChronicDiarrhea": {
-            "label": "慢性腹泻",
-            "options": {"否": 0, "是": 1}
-        },
-        "DiabetesMellitus": {
-            "label": "糖尿病",
-            "options": {"否": 0, "是": 1}
-        },
-        "StoolForm": {
-            "label": "平素大便性状",
-            "options": {"布里斯托 3–7 分": 0, "布里斯托 1–2 分 / 硬便": 1}
-        },
-        "BPEducationModality": {
-            "label": "肠道准备宣教方式",
-            "options": {"文字 + 图文或影像宣教": 0, "口头或文字宣教": 1}
-        },
-        "SplitDose_BP": {
-            "label": "是否分次服用肠道准备药物",
-            "options": {"否": 0, "是": 1}
-        },
-        "PreColonoscopyPhysicalActivity": {
-            "label": "肠镜前是否进行体力活动",
-            "options": {"否": 0, "是": 1}
-        },
-        "PsychotropicMedication_2": {
-            "label": "一周内使用三环类抗抑郁药",
-            "options": {"否": 0, "是": 1}
-        },
-        "PreviousAbdominopelvicSurgery_1": {
-            "label": "既往腹盆腔手术史变量",
-            "options": {"否": 0, "是": 1}
-        },
+    clinical_configs = {
+        "InpatientStatus": {"label": "患者状态", "options": {"门诊": 0, "住院": 1}},
+        "PreviousColonoscopy": {"label": "既往肠镜检查史", "options": {"无": 0, "有": 1}},
+        "ChronicConstipation": {"label": "慢性便秘", "options": {"否": 0, "是": 1}},
+        "StoolForm": {"label": "平时大便性状", "options": {"布里斯托 3–7 分": 0, "布里斯托 1–2 分 / 硬便": 1}},
+        "DiabetesMellitus": {"label": "糖尿病", "options": {"否": 0, "是": 1}},
+        "PreviousAbdominopelvicSurgery_1": {"label": "既往盆腔手术史", "options": {"无": 0, "有": 1}},
     }
 
-    columns_cycle = [col1, col2, col3]
-    i = 0
+    clinical_cols = st.columns(3)
+    shown_idx = 0
 
-    used_features = set(["Age", "BMI", "DietaryRestrictionDays"])
-
-    for feature, cfg in binary_configs.items():
+    for feature, cfg in clinical_configs.items():
         if feature not in feature_order:
             continue
 
-        with columns_cycle[i % 3]:
+        with clinical_cols[shown_idx % 3]:
             selected = st.selectbox(
                 cfg["label"],
                 options=list(cfg["options"].keys()),
@@ -351,11 +296,15 @@ def build_patient_input_form(feature_order, scaler, feature_name_map):
         raw_values[feature] = value
         summary_rows.append({"变量": cfg["label"], "取值": selected})
         used_features.add(feature)
-        i += 1
+        shown_idx += 1
 
+    # ------------------------------------------------------------
+    # 3. 肠道准备相关因素
+    # ------------------------------------------------------------
     st.subheader("肠道准备相关因素")
 
-    dcol, lcol, icol = st.columns(3)
+    bowel_cols1 = st.columns(3)
+    bowel_cols2 = st.columns(4)
 
     dietary_options = {
         "禁食": "DietaryRestriction_1",
@@ -380,46 +329,79 @@ def build_patient_input_form(feature_order, scaler, feature_name_map):
         "≥360 min": "BPtoColonoscopyinterval_4",
     }
 
+    # 饮食限制方式
     if dietary_group:
         valid_diet_options = {k: v for k, v in dietary_options.items() if v in dietary_group}
-        with dcol:
-            selected_diet = st.selectbox("饮食限制策略", list(valid_diet_options.keys()))
+        with bowel_cols1[0]:
+            selected_diet = st.selectbox("饮食限制方式", list(valid_diet_options.keys()))
         row = set_onehot(row, dietary_group, valid_diet_options[selected_diet])
-        summary_rows.append({"变量": "饮食限制策略", "取值": selected_diet})
+        summary_rows.append({"变量": "饮食限制方式", "取值": selected_diet})
         used_features.update(dietary_group)
 
+    # 饮食限制天数
+    with bowel_cols1[1]:
+        diet_days = st.number_input("饮食限制天数", min_value=0.0, max_value=7.0, value=1.0, step=1.0)
+
+    if "DietaryRestrictionDays" in row:
+        row["DietaryRestrictionDays"] = standardize_value(scaler, "DietaryRestrictionDays", diet_days)
+        raw_values["DietaryRestrictionDays"] = diet_days
+        summary_rows.append({"变量": "饮食限制天数", "取值": f"{diet_days} 天"})
+        used_features.add("DietaryRestrictionDays")
+
+    # 泻药方案
     if laxative_group:
         valid_lax_options = {k: v for k, v in laxative_options.items() if v in laxative_group}
-        with lcol:
+        with bowel_cols1[2]:
             selected_lax = st.selectbox("泻药方案", list(valid_lax_options.keys()))
         row = set_onehot(row, laxative_group, valid_lax_options[selected_lax])
         summary_rows.append({"变量": "泻药方案", "取值": selected_lax})
         used_features.update(laxative_group)
 
+    # 泻药是否分次服用
+    if "SplitDose_BP" in feature_order:
+        with bowel_cols2[0]:
+            split_options = {"否": 0, "是": 1}
+            selected_split = st.selectbox("泻药是否分次服用", list(split_options.keys()))
+        row["SplitDose_BP"] = split_options[selected_split]
+        raw_values["SplitDose_BP"] = split_options[selected_split]
+        summary_rows.append({"变量": "泻药是否分次服用", "取值": selected_split})
+        used_features.add("SplitDose_BP")
+
+    # 肠道准备宣教方式
+    if "BPEducationModality" in feature_order:
+        with bowel_cols2[1]:
+            edu_options = {"文字 + 图文或影像宣教": 0, "口头或文字宣教": 1}
+            selected_edu = st.selectbox("肠道准备宣教方式", list(edu_options.keys()))
+        row["BPEducationModality"] = edu_options[selected_edu]
+        raw_values["BPEducationModality"] = edu_options[selected_edu]
+        summary_rows.append({"变量": "肠道准备宣教方式", "取值": selected_edu})
+        used_features.add("BPEducationModality")
+
+    # 服用泻药后是否加强活动
+    if "PreColonoscopyPhysicalActivity" in feature_order:
+        with bowel_cols2[2]:
+            activity_options = {"否": 0, "是": 1}
+            selected_activity = st.selectbox("服用泻药后是否加强活动", list(activity_options.keys()))
+        row["PreColonoscopyPhysicalActivity"] = activity_options[selected_activity]
+        raw_values["PreColonoscopyPhysicalActivity"] = activity_options[selected_activity]
+        summary_rows.append({"变量": "服用泻药后是否加强活动", "取值": selected_activity})
+        used_features.add("PreColonoscopyPhysicalActivity")
+
+    # 肠道准备至肠镜检查时间间隔
     if interval_group:
         valid_interval_options = {k: v for k, v in interval_options.items() if v in interval_group}
-        with icol:
+        with bowel_cols2[3]:
             selected_interval = st.selectbox("肠道准备至肠镜检查时间间隔", list(valid_interval_options.keys()))
         row = set_onehot(row, interval_group, valid_interval_options[selected_interval])
         summary_rows.append({"变量": "肠道准备至肠镜检查时间间隔", "取值": selected_interval})
         used_features.update(interval_group)
 
-    remaining_binary = [
-        col for col in feature_order
-        if col not in used_features
-    ]
-
-    if remaining_binary:
-        with st.expander("其他模型变量", expanded=False):
-            for col in remaining_binary:
-                value = st.selectbox(
-                    feature_name_map.get(col, col),
-                    options=[0, 1],
-                    index=0,
-                    key=f"additional_{col}"
-                )
-                row[col] = value
-                summary_rows.append({"变量": feature_name_map.get(col, col), "取值": value})
+    # ------------------------------------------------------------
+    # 未展示但模型需要的变量：默认 0
+    # ------------------------------------------------------------
+    for col in feature_order:
+        if col not in used_features:
+            row[col] = row.get(col, 0)
 
     patient_model_df = pd.DataFrame([row])[feature_order]
     patient_raw_df = pd.DataFrame([raw_values])

@@ -51,8 +51,8 @@ binary_label_map = {
         1: "分次服药"
     },
     "PreColonoscopyPhysicalActivity": {
-        0: "未进行肠镜前体力活动",
-        1: "进行肠镜前体力活动"
+        0: "未加强活动",
+        1: "加强活动"
     }
 }
 
@@ -148,12 +148,27 @@ def postprocess_row(row, feature_order):
     return row[feature_order]
 
 
+def is_fasting_over_1_day(row, feature_order, scaler):
+    """判断当前情景是否为“禁食 1 天及以上”。"""
+    dietary_group = [c for c in [
+        "DietaryRestriction_1",
+        "DietaryRestriction_2",
+        "DietaryRestriction_3",
+        "DietaryRestriction_4"
+    ] if c in feature_order]
+
+    diet = decode_onehot_group(row, dietary_group, dietary_label_map)
+    days = get_diet_days(row, scaler)
+
+    return diet == "禁食" and days is not None and days >= 1
+
+
 def generate_single_intervention_candidates(
     original_row,
     feature_order,
     scaler,
     feature_name_map,
-    exclude_fasting=False
+    exclude_fasting_over_1_day=True
 ):
     actions = []
 
@@ -236,7 +251,7 @@ def generate_single_intervention_candidates(
         for target_col in dietary_group:
             target_label = dietary_label_map.get(target_col, target_col)
 
-            if exclude_fasting and target_label == "禁食":
+            if exclude_fasting_over_1_day and target_label == "禁食" and get_diet_days(original_row, scaler) is not None and get_diet_days(original_row, scaler) >= 1:
                 continue
 
             if target_label == old_diet:
@@ -311,7 +326,7 @@ def evaluate_single_interventions(
     feature_name_map,
     intervention_threshold,
     min_absolute_reduction=0.0,
-    exclude_fasting=False
+    exclude_fasting_over_1_day=True
 ):
     original_row = patient_model_df.iloc[0][feature_order].copy()
     original_prob = predict_single_risk(model, original_row, feature_order)
@@ -321,7 +336,7 @@ def evaluate_single_interventions(
         feature_order=feature_order,
         scaler=scaler,
         feature_name_map=feature_name_map,
-        exclude_fasting=exclude_fasting
+        exclude_fasting_over_1_day=exclude_fasting_over_1_day
     )
 
     rows = []
@@ -330,6 +345,10 @@ def evaluate_single_interventions(
     for i, action in enumerate(actions, start=1):
         cf_row = action["apply"](original_row)
         cf_row = postprocess_row(cf_row, feature_order)
+
+        if exclude_fasting_over_1_day and "DietaryRestriction" in action["改变变量"]:
+            if is_fasting_over_1_day(cf_row, feature_order, scaler):
+                continue
 
         cf_prob = predict_single_risk(model, cf_row, feature_order)
 
@@ -380,7 +399,7 @@ def evaluate_pairwise_interventions(
     feature_name_map,
     intervention_threshold,
     min_absolute_reduction=0.0,
-    exclude_fasting=False
+    exclude_fasting_over_1_day=True
 ):
     original_row = patient_model_df.iloc[0][feature_order].copy()
     original_prob = predict_single_risk(model, original_row, feature_order)
@@ -390,7 +409,7 @@ def evaluate_pairwise_interventions(
         feature_order=feature_order,
         scaler=scaler,
         feature_name_map=feature_name_map,
-        exclude_fasting=exclude_fasting
+        exclude_fasting_over_1_day=exclude_fasting_over_1_day
     )
 
     rows = []
@@ -403,6 +422,11 @@ def evaluate_pairwise_interventions(
         cf_row = action_b["apply"](cf_row)
 
         cf_row = postprocess_row(cf_row, feature_order)
+
+        changed_features = action_a["改变变量"] + " + " + action_b["改变变量"]
+        if exclude_fasting_over_1_day and "DietaryRestriction" in changed_features:
+            if is_fasting_over_1_day(cf_row, feature_order, scaler):
+                continue
 
         cf_prob = predict_single_risk(model, cf_row, feature_order)
 
@@ -454,7 +478,7 @@ def scan_risk_decreasing_measures(
     intervention_threshold=0.135,
     min_absolute_reduction=0.0,
     evaluate_pairwise=True,
-    exclude_fasting=False
+    exclude_fasting_over_1_day=True
 ):
     single_df, _ = evaluate_single_interventions(
         model=model,
@@ -465,7 +489,7 @@ def scan_risk_decreasing_measures(
         feature_name_map=feature_name_map,
         intervention_threshold=intervention_threshold,
         min_absolute_reduction=min_absolute_reduction,
-        exclude_fasting=exclude_fasting
+        exclude_fasting_over_1_day=exclude_fasting_over_1_day
     )
 
     if evaluate_pairwise:
@@ -478,7 +502,7 @@ def scan_risk_decreasing_measures(
             feature_name_map=feature_name_map,
             intervention_threshold=intervention_threshold,
             min_absolute_reduction=min_absolute_reduction,
-            exclude_fasting=exclude_fasting
+            exclude_fasting_over_1_day=exclude_fasting_over_1_day
         )
     else:
         pairwise_df = pd.DataFrame()
