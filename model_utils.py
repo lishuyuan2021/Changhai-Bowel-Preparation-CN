@@ -133,7 +133,7 @@ def get_feature_display_map():
         "LaxativeRegimen_5": "泻药方案：甘露醇",
         "LaxativeRegimen_6": "泻药方案：硫酸镁",
 
-        "PsychotropicMedication_2": "精神类药物：三环类抗抑郁药",
+        #"PsychotropicMedication_2": "精神类药物：三环类抗抑郁药",
         "PreviousAbdominopelvicSurgery_1": "既往腹盆腔手术史"
     }
 
@@ -281,7 +281,7 @@ def build_patient_input_form(feature_order, scaler, feature_name_map):
         },
         "Sex": {
             "label": "性别编码",
-            "options": {"编码 0": 0, "编码 1": 1}
+            "options": {"女性": 0, "男性": 1}
         },
         "InpatientStatus": {
             "label": "患者状态",
@@ -325,7 +325,7 @@ def build_patient_input_form(feature_order, scaler, feature_name_map):
         },
         "PreviousAbdominopelvicSurgery_1": {
             "label": "既往腹盆腔手术史变量",
-            "options": {"编码 0": 0, "编码 1": 1}
+            "options": {"否": 0, "是": 1}
         },
     }
 
